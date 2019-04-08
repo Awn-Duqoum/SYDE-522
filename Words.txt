@@ -1,0 +1,21 @@
+Source code (max 3 pages) as an appendix to your report
+
+Make sure to clear the course project with the prof first
+
+Use the latex IEEE template
+
+Know the literature about the problem you are solving 
+
+References: don't use URL's, put other papers and other database
+
+Reference all equations, all published papers have been peer reviewed the less new things you introduce the better
+
+You need to convince the reader why they should bother reading your paper through your result 
+
+Can't just put them in a table (do that) but then explain why the table proves your point
+
+Don't copy paste things in abstract/introduction/conclusion 
+
+No less than 20 references 
+
+Archive: Projectron 
