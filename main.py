@@ -5,6 +5,9 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn import svm
+from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
 
 # Load the data
 labels = np.load("data\\labels.npy")
@@ -15,8 +18,8 @@ flatSamples = np.zeros((samples.shape[0], samples.shape[1]*samples.shape[2]))
 for i in range(samples.shape[0]):
     flatSamples[i] = samples[i].flatten()
 
-# Split the data into testings and training - 10% split
-train_img, test_img, train_lbl, test_lbl = train_test_split(flatSamples, labels, test_size=0.1, random_state=None, shuffle=True)
+# Split the data into testings and training - 20% split
+train_img, test_img, train_lbl, test_lbl = train_test_split(flatSamples, labels, test_size=0.20, random_state=None, shuffle=True)
 
 # Let's standardize the data
 scaler = StandardScaler()
@@ -47,3 +50,27 @@ print("KNeighborsClassifier (After PCA) : " + str(KNNModel.score(test_img, test_
 
 test_labels = KNNModel.predict(test_img)
 print(confusion_matrix(test_lbl, test_labels))
+
+# Classify #3 - SVM 
+clf = svm.SVC(gamma='scale', decision_function_shape='ovo')
+clf.fit(train_img, train_lbl)
+
+# Predict for mean accuracy 
+print("SVM (After PCA) : " + str(clf.score(test_img, test_lbl)))
+
+test_labels = clf.predict(test_img)
+print(confusion_matrix(test_lbl, test_labels))
+
+# Classify #4 - MLP 
+mlp = MLPClassifier(hidden_layer_sizes=(150,), max_iter=100, alpha=1e-4,
+                    solver='adam', tol=1e-4, random_state=1,
+                    learning_rate_init=.01)
+                    
+mlp.fit(train_img, train_lbl)
+
+# Predict for mean accuracy 
+print("mlp (After PCA) : " + str(mlp.score(test_img, test_lbl)))
+
+test_labels = mlp.predict(test_img)
+print(confusion_matrix(test_lbl, test_labels))
+
