@@ -34,11 +34,14 @@ def ReadJson(jsonData):
     
     # Extract the data into a useful format
     for ii in range(len(jsonData["data"])):
-        rawSample[:,ii] = ExtractArray(jsonData["data"][i])
+        rawSample[:,ii] = ExtractArray(jsonData["data"][ii])
 
-    # Stretch the signal 
-    for ii in range(6):
-        newSample[ii] = scipy.signal.resample(rawSample[ii], 400)
+    if(len(jsonData["data"]) < 400):
+        # Stretch the signal by padding it
+        for ii in range(6):
+            newSample[ii] = np.pad(rawSample[ii], (0,400 - len(jsonData["data"])), 'mean')
+    else:
+        newSample = rawSample[:,0:400]
         
     return newSample
         
@@ -53,7 +56,7 @@ for i in range(10):
     sample_count = sample_count + len(os.listdir(baseFolder + "\\" + str(i)))
     
 # Create the object to hold the samples
-sample = np.zeros((sample_count, 6, 400))
+sample = np.zeros((sample_count, 400, 6))
 labels = np.zeros((sample_count))
 
 # Create a file counter
@@ -74,7 +77,7 @@ for i in range(10):
         a = jsonData["data"].pop() 
         
         # Update the sample object
-        sample[fileCounter] = ReadJson(jsonData)
+        sample[fileCounter] = ReadJson(jsonData).T
         
         # Update the label object
         labels[fileCounter] = i
@@ -82,5 +85,5 @@ for i in range(10):
         fileCounter = fileCounter + 1
         
 #Save the file
-np.save(distFolder + "\\sample", sample)
+np.save(distFolder + "\\samples", sample)
 np.save(distFolder + "\\labels", labels)

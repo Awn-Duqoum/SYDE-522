@@ -8,7 +8,7 @@ from sklearn.neighbors import KNeighborsClassifier
 
 # Load the data
 labels = np.load("data\\labels.npy")
-samples = np.load("data\\sample.npy")
+samples = np.load("data\\samples.npy")
 
 # Flatten the data
 flatSamples = np.zeros((samples.shape[0], samples.shape[1]*samples.shape[2]))
@@ -39,7 +39,7 @@ test_labels = logisticRegr.predict(test_img)
 print(confusion_matrix(test_lbl, test_labels))
 
 # Classify #2 - KNN 
-KNNModel = KNeighborsClassifier(n_neighbors=7)
+KNNModel = KNeighborsClassifier(n_neighbors=1)
 KNNModel.fit(train_img, train_lbl)
 
 # Predict for mean accuracy 
