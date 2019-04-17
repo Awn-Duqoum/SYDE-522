@@ -8,27 +8,8 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn import svm
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
-from scipy import ndimage
 
-# Flatten Data 
-def flattenData(X):
-    # Create a structure to fold the data
-    flatX = np.zeros((X.shape[0], X.shape[1]*X.shape[2]))
-    # For each axis flatten
-    for ii in range(X.shape[0]):
-        flatX[ii] = X[ii].flatten()
-        
-    return flatX 
-
-# Print iterations progress
-def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
-    # Print New Line on Complete
-    if iteration == total: 
-        print()
+from sklearn.model_selection import GridSearchCV
 
 class SKLearnModel(): 
     def __init__(self, name, model):
@@ -36,14 +17,26 @@ class SKLearnModel():
         self.model = model
         
     def score(self, data, labels):
-        return (self.model.score(data,labels))
+        return (self.grid.score(data,labels))
         
     def predict(self, data):
-        return(self.model.predict(data))
+        return(self.grid.predict(data))
         
     def fit(self, data, labels):
-        return(self.model.fit(data, labels))
+        param_grid = {'C'    : [0.0001, 0.001, 0.01, 0.1, 1, 10, 100],
+                      'gamma': [0.0001, 0.001, 0.01, 0.1, 1, 10, 100]}
+        grid = GridSearchCV(self.model, param_grid, cv=5)
+        grid.fit(data, labels)
+        self.grid = grid.best_estimator_
+        return()
 
+def MovingAverage(X, window = 10):
+  for i in range(X.shape[0]):
+    for j in range(X.shape[2]):
+      for k in range(X.shape[1] - window):
+        X[i,k,j] = np.sum(X[i,k:k+window+1,j])/window
+  return X
+        
 def SplitData(numClasses, data, labels, splitRatio):
     # Makes the first split
     train_img_i, test_img_i, train_lbl_i, test_lbl_i = train_test_split(data[labels==0], labels[labels==0], test_size=splitRatio, random_state=None, shuffle=True)
@@ -62,13 +55,6 @@ def SplitData(numClasses, data, labels, splitRatio):
         test_lbl  = np.concatenate((test_lbl, test_lbl_i))    
     return train_img, test_img, train_lbl, test_lbl
         
-def MovingAverage(X, window = 10):
-  for i in range(X.shape[0]):
-    for j in range(X.shape[2]):
-      for k in range(X.shape[1] - window):
-        X[i,k,j] = np.sum(X[i,k:k+window+1,j])/window
-  return X
-
 # Control Output
 OutputConfusionMatrix = False
 NumberofFolds = 5
@@ -76,36 +62,22 @@ errors = []
 
 # Create Models
 logisticRegr = LogisticRegression(multi_class="multinomial", max_iter=1e9, solver = 'lbfgs')
-KNNModel = KNeighborsClassifier(n_neighbors=5)
-clf = svm.SVC(gamma='scale', decision_function_shape='ovo')
-mlp = MLPClassifier(hidden_layer_sizes=(64, 128, 256), max_iter=450, alpha=1e-4,
+KNNModel = KNeighborsClassifier(n_neighbors=1)
+clf = svm.SVC(gamma='scale', decision_function_shape='ovo', verbose=0)
+mlp = MLPClassifier(hidden_layer_sizes=(64,128, 256), max_iter=450, alpha=1e-4,
                     solver='adam', tol=1e-8, random_state=1, early_stopping=True,
                     learning_rate_init=0.001, verbose=0)
 
 # Create Model array
-models = [SKLearnModel("Logistic Regression",logisticRegr), 
-          SKLearnModel("KNN "               ,KNNModel),
-          SKLearnModel("SVM"                ,clf),
-          SKLearnModel("MLP"                ,mlp)]
+models = [SKLearnModel("SVM",clf)]
 
 # Define augmentation parameters
-acc_Noise  = 0.001
-gyro_Noise = 0.001
-augmentation_factor = 5
-
+acc_Noise  = 0.02
+gyro_Noise = 10
+          
 # Load the data
 labels = np.load("data\\labels.npy")
 samples = np.load("data\\samples.npy")
-
-# # Let's add the sobel transform of the data as more axis
-# new_samples = np.zeros((samples.shape[0], samples.shape[1], samples.shape[2] + 6)) 
-# new_samples[:,:, 0:6] = samples
-
-# for dataPoint in new_samples:
-    # for i in range(6):
-        # dataPoint[:, i + 6] = ndimage.sobel(dataPoint[:,i])
-
-# samples = new_samples
 
 # Determine the number of classes
 numClasses = len(np.unique(labels))
@@ -116,42 +88,51 @@ samples = samples[newIDX]
 labels = labels[newIDX]
 
 # Smooth the data
-samples = MovingAverage(samples, 25)
+samples = MovingAverage(samples, 10)
+
+# Convert Degrees to Radians
+samples[:,:,3:6] = samples[:,:,3:6] * np.pi / 360.0
 
 # Subtract out the mean of the data
 for i in range(6):
-    samples[:,:,i] = samples[:,:,i] - np.mean(samples[:,:,i])
+  samples[:,:,i] = samples[:,:,i] - np.mean(samples[:,:,i])
 
 # Create a list to store the errors
 errors = np.zeros((len(models), NumberofFolds))
 
-# Start the progress bar
-printProgressBar(0, NumberofFolds, prefix = 'Progress:', suffix = 'Complete', length = 50)
-
 for i in range(NumberofFolds):
-    # Flatten the data
-    flatSamples = flattenData(samples)
+    # Update the user
+    print(str(i) + ", ", end="")
     
+    # Flatten the data
+    flatSamples = np.zeros((samples.shape[0], samples.shape[1]*samples.shape[2]))
+        
+    for ii in range(samples.shape[0]):
+        flatSamples[ii] = samples[ii].flatten()
+
     # Split the data into testings and training - 20% split
     # 20% might get us in a case where we don't have one of the classes so instead of taking 20% of the entire space, take 20% of each class and then merge them
-    train_img, test_img, train_lbl, test_lbl = SplitData(numClasses, flatSamples, labels, 0.1)
-    
-    # Create augmented data
-    Aug_Samples = np.repeat(train_img, augmentation_factor, axis = 0)
-    Aug_Labels  = np.repeat(train_lbl, augmentation_factor, axis = 0)
-    Aug_Samples = Aug_Samples.reshape(train_img.shape[0] * augmentation_factor, samples.shape[1], samples.shape[2])
-    Aug_Samples[:,:,0:3] = Aug_Samples[:,:,0:3] + np.random.normal(0.0, acc_Noise , size=(Aug_Samples.shape[0], Aug_Samples.shape[1], 3))
-    Aug_Samples[:,:,3:6] = Aug_Samples[:,:,3:6] + np.random.normal(0.0, gyro_Noise, size=(Aug_Samples.shape[0], Aug_Samples.shape[1], 3))
-    
-    # Flatten the augmented data
-    flatSamples = flattenData(Aug_Samples)
-      
-    # Concatenate the training data and the augmented data
-    train_img = np.concatenate((train_img, flatSamples), axis=0)
-    train_lbl = np.concatenate((train_lbl,  Aug_Labels), axis=0)
+    train_img, test_img, train_lbl, test_lbl = SplitData(numClasses, flatSamples, labels, 0.2)
+
+    for iii in range(3):
+        # Create augmented data
+        Aug_Samples = train_img.copy()
+        Aug_Samples = Aug_Samples.reshape(train_img.shape[0], samples.shape[1], samples.shape[2])
+        Aug_Samples[:,:,0:3] = Aug_Samples[:,:,0:3] + np.random.normal(0.0, acc_Noise , size=(Aug_Samples.shape[0], Aug_Samples.shape[1], 3))
+        Aug_Samples[:,:,3:6] = Aug_Samples[:,:,3:6] + np.random.normal(0.0, gyro_Noise, size=(Aug_Samples.shape[0], Aug_Samples.shape[1], 3))
+        
+        # Flatten the data
+        flatSamples = np.zeros((Aug_Samples.shape[0], Aug_Samples.shape[1]*Aug_Samples.shape[2]))
+        
+        for ii in range(Aug_Samples.shape[0]):
+            flatSamples[ii] = Aug_Samples[ii].flatten()
+            
+        # Concatenate the training data and the augmented data
+        train_img = np.concatenate((train_img, flatSamples), axis=0)
+        train_lbl = np.concatenate((train_lbl,   train_lbl), axis=0)
     
     # Let's standardize the data
-    scaler = MinMaxScaler()
+    scaler = MaxAbsScaler()
     
     # Fit on training set only.
     scaler.fit(train_img)
@@ -160,8 +141,8 @@ for i in range(NumberofFolds):
     train_img = scaler.transform(train_img)
     test_img = scaler.transform(test_img) 
     
-    # Create a PCA model with 0.99% variance
-    pca = PCA(0.95)
+    # Create a PCA model with 0.98% variance
+    pca = PCA(0.98)
     pca.fit(train_img)
     
     # Transform the data
@@ -175,17 +156,9 @@ for i in range(NumberofFolds):
         
         # Run the model on test data  
         errors[ii, i] = models[ii].score(test_img, test_lbl)
-        
-    # Update the progress bar
-    printProgressBar(i + 1, NumberofFolds, prefix = 'Progress:', suffix = 'Complete', length = 50)
 
 # Output all the errors
 for j in range(len(models)):
     print(['{:.2f}'.format(ii) for ii in errors[j]], end=" - ")
     print('{:.2f}'.format(np.mean(errors[j])), end=" - ")
     print(models[j].name)
-
-# Confusion Matrices 
-if(OutputConfusionMatrix):
-    for model in models:
-        print(confusion_matrix(test_lbl, model.predict(test_img)))
