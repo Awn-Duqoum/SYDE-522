@@ -3,6 +3,7 @@ import os
 import shutil
 import numpy as np
 import scipy.signal
+from scipy.interpolate import UnivariateSpline
 
 def onerror(func, path, exc_info):
     import stat
@@ -13,8 +14,8 @@ def onerror(func, path, exc_info):
     else:
         raise
 
-baseFolder = os.getcwd() + "\\Raw_Data"
-distFolder = os.getcwd() + "\\Data"
+baseFolder = os.getcwd() + "\\Raw_Data_1"
+distFolder = os.getcwd() + "\\TestingData"
 
 def ExtractArray(jsonEntry):
     # Make an empty array
@@ -35,11 +36,14 @@ def ReadJson(jsonData):
     # Extract the data into a useful format
     for ii in range(len(jsonData["data"])):
         rawSample[:,ii] = ExtractArray(jsonData["data"][ii])
-
     if(len(jsonData["data"]) < 400):
-        # Stretch the signal by padding it
+        # Stretch the signal by interpolating it
+        new_length = 400
+        old_length = len(jsonData["data"])
+        old_indices = np.arange(0,old_length)
+        new_indices = np.linspace(0,old_length-1,new_length)
         for ii in range(6):
-            newSample[ii] = np.pad(rawSample[ii], (0,400 - len(jsonData["data"])), 'mean')
+            spl = UnivariateSpline(old_indices,rawSample[ii],k=3,s=0)
     else:
         newSample = rawSample[:,0:400]
         

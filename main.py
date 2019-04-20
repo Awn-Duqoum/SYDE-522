@@ -17,19 +17,9 @@ def flattenData(X):
     # For each axis flatten
     for ii in range(X.shape[0]):
         flatX[ii] = X[ii].flatten()
-        
     return flatX 
 
-# Print iterations progress
-def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
-    # Print New Line on Complete
-    if iteration == total: 
-        print()
-
+# Create a structure to more easily test different models
 class SKLearnModel(): 
     def __init__(self, name, model):
         self.name = name
@@ -44,145 +34,102 @@ class SKLearnModel():
     def fit(self, data, labels):
         return(self.model.fit(data, labels))
 
-def SplitData(numClasses, data, labels, splitRatio):
-    # Makes the first split
-    train_img_i, test_img_i, train_lbl_i, test_lbl_i = train_test_split(data[labels==0], labels[labels==0], test_size=splitRatio, random_state=None, shuffle=True)
-    train_img = train_img_i
-    test_img  = test_img_i
-    train_lbl = train_lbl_i
-    test_lbl  = test_lbl_i
-    
-    for ii in range(numClasses):
-        if(ii == 0):
-            continue
-        train_img_i, test_img_i, train_lbl_i, test_lbl_i = train_test_split(data[labels==ii], labels[labels==ii], test_size=splitRatio, random_state=None, shuffle=True)
-        train_img = np.concatenate((train_img, train_img_i))
-        test_img  = np.concatenate((test_img, test_img_i))
-        train_lbl = np.concatenate((train_lbl, train_lbl_i))
-        test_lbl  = np.concatenate((test_lbl, test_lbl_i))    
-    return train_img, test_img, train_lbl, test_lbl
-        
+# Computes the moving average of a 1-D signal
 def MovingAverage(X, window = 10):
+  # Compute the moving average for the bulk of the signal
   for i in range(X.shape[0]):
     for j in range(X.shape[2]):
       for k in range(X.shape[1] - window):
         X[i,k,j] = np.sum(X[i,k:k+window+1,j])/window
+   # For the tail of the data we can't compute a moving average 
+   # so just use the mean for it
+  for i in range(X.shape[0]):
+    for j in range(X.shape[2]):
+      X[i,X.shape[1]-window:X.shape[1]+1,j] = X[i, X.shape[1]-window-1, j]
   return X
 
 # Control Output
 OutputConfusionMatrix = False
-NumberofFolds = 5
 errors = []
 
 # Create Models
 logisticRegr = LogisticRegression(multi_class="multinomial", max_iter=1e9, solver = 'lbfgs')
-KNNModel = KNeighborsClassifier(n_neighbors=5)
+KNNModel = KNeighborsClassifier(n_neighbors=5, metric="cosine")
 clf = svm.SVC(gamma='scale', decision_function_shape='ovo')
-mlp = MLPClassifier(hidden_layer_sizes=(64, 128, 256), max_iter=450, alpha=1e-4,
+mlp = MLPClassifier(hidden_layer_sizes=(64, 128, 256, 512, 512), max_iter=450, alpha=1e-4,
                     solver='adam', tol=1e-8, random_state=1, early_stopping=True,
                     learning_rate_init=0.001, verbose=0)
 
 # Create Model array
-models = [SKLearnModel("Logistic Regression",logisticRegr), 
-          SKLearnModel("KNN "               ,KNNModel),
-          SKLearnModel("SVM"                ,clf),
-          SKLearnModel("MLP"                ,mlp)]
-
-# Define augmentation parameters
-acc_Noise  = 0.001
-gyro_Noise = 0.001
-augmentation_factor = 5
-
+models = [SKLearnModel("Logistic Regression", logisticRegr), 
+          SKLearnModel("KNN "               , KNNModel),
+          SKLearnModel("SVM"                , clf),
+          SKLearnModel("MLP"                , mlp)]
+          
 # Load the data
-labels = np.load("data\\labels.npy")
-samples = np.load("data\\samples.npy")
+labels = np.load("TrainingData\\labels.npy")
+samples = np.load("TrainingData\\samples.npy")
 
-# # Let's add the sobel transform of the data as more axis
-# new_samples = np.zeros((samples.shape[0], samples.shape[1], samples.shape[2] + 6)) 
-# new_samples[:,:, 0:6] = samples
-
-# for dataPoint in new_samples:
-    # for i in range(6):
-        # dataPoint[:, i + 6] = ndimage.sobel(dataPoint[:,i])
-
-# samples = new_samples
+test_labels = np.load("TestingData2\\labels.npy")
+test_samples = np.load("TestingData2\\samples.npy")
 
 # Determine the number of classes
 numClasses = len(np.unique(labels))
 
-# Shuffle the data
+# Shuffle the training data
 newIDX = np.random.permutation(len(samples))
 samples = samples[newIDX]
 labels = labels[newIDX]
 
+# Shuffle the testing data
+newIDX = np.random.permutation(len(test_samples))
+test_samples = test_samples[newIDX]
+test_labels = test_labels[newIDX]
+
 # Smooth the data
 samples = MovingAverage(samples, 25)
-
-# Subtract out the mean of the data
-for i in range(6):
-    samples[:,:,i] = samples[:,:,i] - np.mean(samples[:,:,i])
+test_samples = MovingAverage(test_samples, 25)
 
 # Create a list to store the errors
-errors = np.zeros((len(models), NumberofFolds))
+errors = np.zeros(len(models))
 
-# Start the progress bar
-printProgressBar(0, NumberofFolds, prefix = 'Progress:', suffix = 'Complete', length = 50)
+# Flatten the data
+train_img = flattenData(samples)
+train_lbl = labels
 
-for i in range(NumberofFolds):
-    # Flatten the data
-    flatSamples = flattenData(samples)
-    
-    # Split the data into testings and training - 20% split
-    # 20% might get us in a case where we don't have one of the classes so instead of taking 20% of the entire space, take 20% of each class and then merge them
-    train_img, test_img, train_lbl, test_lbl = SplitData(numClasses, flatSamples, labels, 0.1)
-    
-    # Create augmented data
-    Aug_Samples = np.repeat(train_img, augmentation_factor, axis = 0)
-    Aug_Labels  = np.repeat(train_lbl, augmentation_factor, axis = 0)
-    Aug_Samples = Aug_Samples.reshape(train_img.shape[0] * augmentation_factor, samples.shape[1], samples.shape[2])
-    Aug_Samples[:,:,0:3] = Aug_Samples[:,:,0:3] + np.random.normal(0.0, acc_Noise , size=(Aug_Samples.shape[0], Aug_Samples.shape[1], 3))
-    Aug_Samples[:,:,3:6] = Aug_Samples[:,:,3:6] + np.random.normal(0.0, gyro_Noise, size=(Aug_Samples.shape[0], Aug_Samples.shape[1], 3))
-    
-    # Flatten the augmented data
-    flatSamples = flattenData(Aug_Samples)
-      
-    # Concatenate the training data and the augmented data
-    train_img = np.concatenate((train_img, flatSamples), axis=0)
-    train_lbl = np.concatenate((train_lbl,  Aug_Labels), axis=0)
-    
-    # Let's standardize the data
-    scaler = MinMaxScaler()
-    
-    # Fit on training set only.
-    scaler.fit(train_img)
-    
-    # Apply transform to both the training set and the test set.
-    train_img = scaler.transform(train_img)
-    test_img = scaler.transform(test_img) 
-    
-    # Create a PCA model with 0.99% variance
-    pca = PCA(0.95)
-    pca.fit(train_img)
-    
-    # Transform the data
-    train_img = pca.transform(train_img)
-    test_img = pca.transform(test_img)
-    
-    # Score each model
-    for ii in range(len(models)):
-        # Train the model
-        models[ii].fit(train_img, train_lbl)
-        
-        # Run the model on test data  
-        errors[ii, i] = models[ii].score(test_img, test_lbl)
-        
-    # Update the progress bar
-    printProgressBar(i + 1, NumberofFolds, prefix = 'Progress:', suffix = 'Complete', length = 50)
+# Create the testing data
+test_img = flattenData(test_samples)
+test_lbl = test_labels
 
+# Let's standardize the data
+scaler = MinMaxScaler()
+
+# Fit on training set only.
+scaler.fit(train_img)
+
+# Apply transform to both the training set and the test set.
+train_img = scaler.transform(train_img)
+test_img  = scaler.transform(test_img) 
+
+# Create a PCA model with 0.95% variance
+pca = PCA(0.95)
+pca.fit(train_img)
+
+# Transform the data
+train_img = pca.transform(train_img)
+test_img  = pca.transform(test_img)
+
+# Score each model
+for ii in range(len(models)):
+    # Train the model
+    models[ii].fit(train_img, train_lbl)
+    
+    # Run the model on test data  
+    errors[ii] = models[ii].score(test_img, test_lbl)
+    
 # Output all the errors
 for j in range(len(models)):
-    print(['{:.2f}'.format(ii) for ii in errors[j]], end=" - ")
-    print('{:.2f}'.format(np.mean(errors[j])), end=" - ")
+    print('{:.2f}'.format(errors[j]), end=" - ")
     print(models[j].name)
 
 # Confusion Matrices 
