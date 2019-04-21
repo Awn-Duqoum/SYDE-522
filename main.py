@@ -9,6 +9,41 @@ from sklearn import svm
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from scipy import ndimage
+import matplotlib.pyplot as plt
+
+# Plot confusion matrix
+def plot_confusion_matrix(y_true, y_pred, classes, title=None, cmap=plt.cm.Blues):
+    if not title:
+        title = 'Confusion matrix'
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+    print(cm)
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+    ax.figure.colorbar(im, ax=ax)
+    # We want to show all ticks...
+    ax.set(xticks=np.arange(cm.shape[1]),
+           yticks=np.arange(cm.shape[0]),
+           # ... and label them with the respective list entries
+           xticklabels=classes, yticklabels=classes,
+           title=title,
+           ylabel='True label',
+           xlabel='Predicted label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+             rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], 'd'),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+    return ax
 
 # Flatten Data 
 def flattenData(X):
@@ -34,7 +69,7 @@ class SKLearnModel():
     def fit(self, data, labels):
         return(self.model.fit(data, labels))
 
-# Computes the moving average of a 1-D signal
+# Computes the moving average of a 3-D IMU signal
 def MovingAverage(X, window = 10):
   # Compute the moving average for the bulk of the signal
   for i in range(X.shape[0]):
@@ -49,7 +84,7 @@ def MovingAverage(X, window = 10):
   return X
 
 # Control Output
-OutputConfusionMatrix = False
+OutputConfusionMatrix = True
 errors = []
 
 # Create Models
@@ -134,5 +169,10 @@ for j in range(len(models)):
 
 # Confusion Matrices 
 if(OutputConfusionMatrix):
+    np.set_printoptions(precision=2)
+
     for model in models:
-        print(confusion_matrix(test_lbl, model.predict(test_img)))
+        class_names = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+        # Plot non-normalized confusion matrix
+        plot_confusion_matrix(test_lbl, model.predict(test_img), classes=class_names, title=model.name + ' Confusion matrix')
+        plt.savefig("TestingData2-" + model.name + ' CM', bbox_inches='tight')
